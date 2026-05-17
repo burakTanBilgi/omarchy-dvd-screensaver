@@ -1,0 +1,203 @@
+#!/usr/bin/env python3
+"""DVD-player bouncing-logo screensaver.
+
+Reads ASCII art from ~/.config/omarchy/branding/screensaver.txt and
+bounces it around the terminal, switching color on every wall hit.
+Exits on any keypress, on signals, or when the screensaver window
+loses focus.
+
+This shadows the stock omarchy-cmd-screensaver via PATH order, so
+hypridle -> omarchy-launch-screensaver -> (this script) still works.
+"""
+
+import json
+import os
+import random
+import select
+import shutil
+import signal
+import subprocess
+import sys
+import termios
+import time
+import tty
+
+ART_FILE = os.path.expanduser("~/.config/omarchy/branding/screensaver.txt")
+WIN_CLASS = "org.omarchy.screensaver"
+FRAME_DELAY = 0.05   # 20fps loop — tight input/focus responsiveness
+MOVE_EVERY = 10      # ...but only step the logo every N frames (~2 cells/s)
+FOCUS_POLL = 1.0     # seconds between focus checks
+
+
+def load_art():
+    try:
+        with open(ART_FILE, "r") as f:
+            raw = f.read().rstrip("\n")
+        lines = raw.split("\n") if raw else ["DVD VIDEO"]
+    except FileNotFoundError:
+        lines = ["DVD VIDEO"]
+    width = max((len(l) for l in lines), default=1)
+    return lines, len(lines), width
+
+
+def screensaver_in_focus():
+    try:
+        out = subprocess.check_output(
+            ["hyprctl", "activewindow", "-j"],
+            stderr=subprocess.DEVNULL,
+            timeout=0.5,
+        )
+        return json.loads(out).get("class") == WIN_CLASS
+    except Exception:
+        return True
+
+
+def show_cursor_and_clear():
+    sys.stdout.write("\033[?25h\033[?7h\033[0m\033[2J\033[H")
+    sys.stdout.flush()
+
+
+def restore_system_cursor():
+    subprocess.run(
+        ["hyprctl", "keyword", "cursor:invisible", "false"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+
+
+_OLD_TTY = None
+_TTY_FD = None
+
+
+def restore_tty():
+    global _OLD_TTY, _TTY_FD
+    if _OLD_TTY is not None and _TTY_FD is not None:
+        try:
+            termios.tcsetattr(_TTY_FD, termios.TCSADRAIN, _OLD_TTY)
+        except Exception:
+            pass
+
+
+def cleanup_and_exit(*_):
+    restore_tty()
+    show_cursor_and_clear()
+    restore_system_cursor()
+    subprocess.run(
+        ["pkill", "-f", WIN_CLASS],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    sys.exit(0)
+
+
+def main():
+    global _OLD_TTY, _TTY_FD
+
+    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT):
+        signal.signal(sig, cleanup_and_exit)
+
+    lines, art_h, art_w = load_art()
+
+    # Terminal init: black bg, hide cursor, disable autowrap, clear
+    sys.stdout.write("\033]11;rgb:00/00/00\007")
+    sys.stdout.write("\033[?25l\033[?7l\033[2J")
+    sys.stdout.flush()
+    subprocess.run(
+        ["hyprctl", "keyword", "cursor:invisible", "true"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+
+    # Set tty to cbreak so we can detect single keystrokes
+    _TTY_FD = sys.stdin.fileno()
+    try:
+        _OLD_TTY = termios.tcgetattr(_TTY_FD)
+        tty.setcbreak(_TTY_FD)
+    except Exception:
+        _OLD_TTY = None
+
+    term_w, term_h = shutil.get_terminal_size()
+    if art_w >= term_w or art_h >= term_h:
+        # Art bigger than terminal - just center it.
+        x = max(0, (term_w - art_w) // 2)
+        y = max(0, (term_h - art_h) // 2)
+        dx = dy = 0
+    else:
+        x = random.randint(0, term_w - art_w - 1)
+        y = random.randint(0, term_h - art_h - 1)
+        dx = random.choice([-1, 1])
+        dy = random.choice([-1, 1])
+
+    last_x = last_y = -1
+    last_focus_check = 0.0
+    grace_until = time.time() + 1.0  # ignore early input bursts
+    frame_counter = 0
+
+    try:
+        while True:
+            # Wake on any input (after a small grace period to swallow the
+            # mouse-move that the terminal's appearance might generate).
+            ready, _, _ = select.select([_TTY_FD], [], [], 0)
+            if ready and time.time() >= grace_until:
+                try:
+                    os.read(_TTY_FD, 64)
+                except Exception:
+                    pass
+                break
+
+            now = time.time()
+            if now - last_focus_check > FOCUS_POLL:
+                last_focus_check = now
+                if not screensaver_in_focus():
+                    break
+
+            new_w, new_h = shutil.get_terminal_size()
+            if (new_w, new_h) != (term_w, term_h):
+                term_w, term_h = new_w, new_h
+                sys.stdout.write("\033[2J")
+                last_x = last_y = -1
+                x = min(x, max(0, term_w - art_w - 1))
+                y = min(y, max(0, term_h - art_h - 1))
+
+            frame_counter += 1
+            should_move = (frame_counter % MOVE_EVERY == 0)
+            if should_move:
+                x += dx
+                y += dy
+                max_x = max(0, term_w - art_w)
+                max_y = max(0, term_h - art_h)
+                # Reflect (not clamp) so the logo never sits at the edge for
+                # more than the one frame it lands on it.
+                if x < 0:
+                    x = -x
+                    dx = abs(dx) or 1
+                elif x > max_x:
+                    x = 2 * max_x - x
+                    dx = -(abs(dx) or 1)
+                if y < 0:
+                    y = -y
+                    dy = abs(dy) or 1
+                elif y > max_y:
+                    y = 2 * max_y - y
+                    dy = -(abs(dy) or 1)
+                # Safety clamp in case of huge resize or weird state
+                x = max(0, min(x, max_x))
+                y = max(0, min(y, max_y))
+
+            if should_move or last_x < 0:
+                if (x, y) != (last_x, last_y):
+                    chunks = []
+                    if last_x >= 0:
+                        blank = " " * art_w
+                        for i in range(art_h):
+                            chunks.append(f"\033[{last_y + i + 1};{last_x + 1}H{blank}")
+                    for i, line in enumerate(lines):
+                        chunks.append(f"\033[{y + i + 1};{x + 1}H{line}")
+                    sys.stdout.write("".join(chunks))
+                    sys.stdout.flush()
+                    last_x, last_y = x, y
+
+            time.sleep(FRAME_DELAY)
+    finally:
+        cleanup_and_exit()
+
+
+if __name__ == "__main__":
+    main()
