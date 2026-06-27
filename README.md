@@ -10,7 +10,10 @@ Two renderers, switchable on the fly:
 
 - **`browser`** — the real DVD-Video logo bouncing in a Chromium kiosk window.
   Cycles color + glow on every wall bounce, and when it nails a true corner it
-  sets off a ~5-second randomized fireworks show.
+  sets off a ~5-second fireworks show: six randomized burst types
+  (chrysanthemum, willow, palm, ring, crackle, multi-break) shedding embers that
+  **pile up into a glowing mound on the floor** and slowly cool. Pure
+  HTML/canvas — no extra packages.
 - **`ascii`** — the logo as bouncing ASCII art in a fullscreen terminal. No
   Chromium, works anywhere.
 
