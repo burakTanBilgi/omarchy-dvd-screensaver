@@ -1,36 +1,66 @@
 #!/usr/bin/env bash
 # Installer for omarchy-dvd-screensaver.
-# - Copies the screensaver script to ~/.local/bin
-# - Copies the default ASCII art to ~/.config/omarchy/branding
-# - Ensures ~/.local/bin is on Hyprland's PATH (so the shadow is picked up)
+#
+# Installs a mode-switchable DVD screensaver for Omarchy with two renderers:
+#   browser : bouncing DVD-Video logo + corner-hit fireworks (Chromium kiosk)
+#   ascii   : bouncing ASCII DVD logo in a terminal
+# plus the stock Omarchy tte screensaver as "default", and "none" to disable.
+#
+# Conservative by design: every config edit is backed up first and skipped if
+# already applied. Nothing in ~/.local/share/omarchy is touched.
 
 set -euo pipefail
-
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BIN_DST="$HOME/.local/bin/omarchy-cmd-screensaver"
-ART_DST="$HOME/.config/omarchy/branding/screensaver.txt"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LBIN="$HOME/.local/bin"
+OBIN="$HOME/.config/omarchy/bin"
+SS="$HOME/.config/omarchy/screensaver"
+BRAND="$HOME/.config/omarchy/branding"
 ENVS="$HOME/.config/hypr/envs.conf"
+HYPRIDLE="$HOME/.config/hypr/hypridle.conf"
+MODEFILE="$HOME/.config/omarchy/screensaver-mode"
+say(){ printf '==> %s\n' "$*"; }
 
-echo "==> Installing screensaver script to $BIN_DST"
-install -Dm755 "$REPO_DIR/bin/omarchy-cmd-screensaver" "$BIN_DST"
+# 1. scripts -> ~/.local/bin (these shadow the stock commands via PATH order)
+say "Installing scripts to $LBIN"
+for f in omarchy-screensaver-launch omarchy-screensaver omarchy-launch-screensaver \
+         omarchy-cmd-screensaver omarchy-screensaver-menu; do
+  install -Dm755 "$REPO/bin/$f" "$LBIN/$f"
+done
 
-echo "==> Installing default ASCII art to $ART_DST"
-install -Dm644 "$REPO_DIR/branding/screensaver.txt" "$ART_DST"
+# 2. browser renderer (launcher + self-contained page)
+install -Dm755 "$REPO/config/omarchy/bin/omarchy-launch-dvd-screensaver" "$OBIN/omarchy-launch-dvd-screensaver"
+install -Dm644 "$REPO/config/omarchy/screensaver/dvd.html"     "$SS/dvd.html"
+install -Dm644 "$REPO/config/omarchy/screensaver/dvd-mask.png" "$SS/dvd-mask.png"
 
-# Make sure ~/.local/bin is on Hyprland's PATH so omarchy-launch-screensaver
-# (which spawns alacritty via hyprctl exec) resolves our shadow.
+# 3. ASCII art
+install -Dm644 "$REPO/branding/screensaver.txt" "$BRAND/screensaver.txt"
+
+# 4. PATH: ensure ~/.local/bin shadows the stock omarchy bins for Hyprland children
 if [[ -f "$ENVS" ]] && ! grep -q '\.local/bin' "$ENVS"; then
-  echo "==> Adding ~/.local/bin to Hyprland PATH (in $ENVS)"
-  printf '\n# Ensure ~/.local/bin shadows ship via PATH\nenv = PATH,$HOME/.local/bin:$PATH\n' >> "$ENVS"
-  echo "    (run \`hyprctl reload\` to apply)"
+  say "Adding ~/.local/bin to Hyprland PATH ($ENVS)"
+  cp "$ENVS" "$ENVS.bak.$(date +%s)"
+  printf '\n# omarchy-dvd-screensaver: shadow stock screensaver commands\nenv = PATH,$HOME/.local/bin:$PATH\n' >> "$ENVS"
 elif [[ ! -f "$ENVS" ]]; then
-  echo "==> $ENVS not found; skipping PATH tweak (you may need to add it manually)"
-else
-  echo "==> ~/.local/bin already present in $ENVS, no change needed"
+  say "NOTE: $ENVS not found — add: env = PATH,\$HOME/.local/bin:\$PATH"
 fi
 
-echo ""
-echo "Done. Test with:"
-echo "    omarchy-launch-screensaver force"
-echo ""
-echo "To uninstall:  rm $BIN_DST"
+# 5. hypridle: point the screensaver timeout at our dispatcher (optional, safe)
+if [[ -f "$HYPRIDLE" ]] && ! grep -q 'omarchy-screensaver-launch' "$HYPRIDLE"; then
+  if grep -q 'omarchy-launch-screensaver' "$HYPRIDLE"; then
+    say "Wiring hypridle on-timeout -> omarchy-screensaver-launch"
+    cp "$HYPRIDLE" "$HYPRIDLE.bak.$(date +%s)"
+    sed -i 's/omarchy-launch-screensaver/omarchy-screensaver-launch/g' "$HYPRIDLE"
+  fi
+fi
+
+# 6. default mode: browser if chromium is available, else ascii
+if [[ ! -f "$MODEFILE" ]]; then
+  mkdir -p "$(dirname "$MODEFILE")"
+  if command -v chromium >/dev/null; then echo browser > "$MODEFILE"; else echo ascii > "$MODEFILE"; fi
+  say "Default screensaver mode: $(cat "$MODEFILE")"
+fi
+
+echo
+say "Done. Apply with:  hyprctl reload && omarchy restart hypridle"
+echo "    Preview now:   omarchy-launch-screensaver force"
+echo "    Switch modes:  omarchy-screensaver-menu        (needs 'gum')"

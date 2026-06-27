@@ -1,142 +1,118 @@
 # omarchy-dvd-screensaver
 
-A bouncing DVD-logo screensaver for [Omarchy](https://omarchy.org/) — the iconic
-early-2000s wallpaper, rendered as bouncing ASCII art in a fullscreen
-terminal.
+The iconic bouncing **DVD-Video logo** as a screensaver for
+[Omarchy](https://omarchy.org/) (Arch + Hyprland) — with the moment everyone
+waits for: a **corner-hit fireworks finale**.
 
-Replaces Omarchy's stock `tte` random-effects screensaver while keeping
-every other piece of the existing screensaver pipeline (hypridle timing,
-terminal class, focus detection, screensaver-off toggle) untouched.
+![DVD logo bouncing with a corner-hit fireworks show](docs/demo.gif)
 
-## Demo
+Two renderers, switchable on the fly:
 
-```
-                                                                       ┌────────────────────────────┐
-                                                                       │██████╗ ██╗   ██╗██████╗   │
-                                                                       │██╔══██╗██║   ██║██╔══██╗  │
-                                                                       │██║  ██║██║   ██║██║  ██║  │
-                                                                       │██║  ██║╚██╗ ██╔╝██║  ██║  │
-                                                                       │██████╔╝ ╚████╔╝ ██████╔╝  │
-                                                                       │╚═════╝   ╚═══╝  ╚═════╝   │
-                                                                       │       V I D E O           │
-                                                                       └────────────────────────────┘
-```
+- **`browser`** — the real DVD-Video logo bouncing in a Chromium kiosk window.
+  Cycles color + glow on every wall bounce, and when it nails a true corner it
+  sets off a ~5-second randomized fireworks show.
+- **`ascii`** — the logo as bouncing ASCII art in a fullscreen terminal. No
+  Chromium, works anywhere.
 
-The logo drifts diagonally and bounces off all four edges of the
-terminal. Any keypress, mouse-move, or focus loss exits.
+Plus `default` (the stock Omarchy `tte` random-effects screensaver) and `none`
+(disabled). It drops into Omarchy's existing screensaver pipeline — hypridle
+timing, focus detection, and the screensaver-off toggle all keep working. **Any
+key, mouse move, or focus loss exits instantly.**
 
 ## How it works
 
-Omarchy's screensaver pipeline is:
+Omarchy idles into its screensaver like this:
 
 ```
-hypridle (idle 2.5 min)
-    └─► omarchy-launch-screensaver
-            └─► opens alacritty/ghostty/kitty (class=org.omarchy.screensaver)
-                    └─► runs `omarchy-cmd-screensaver`
-                            └─► (stock) loops tte effects forever
+hypridle (idle ~2.5 min)
+   └─► omarchy-screensaver-launch        ← dispatcher (this project)
+          reads ~/.config/omarchy/screensaver-mode and branches:
+            browser → omarchy-launch-dvd-screensaver → chromium --kiosk dvd.html
+            ascii   → (stock launcher) → terminal → omarchy-screensaver → omarchy-cmd-screensaver
+            default → stock Omarchy tte screensaver
+            none    → exit
 ```
 
-This project ships a single Python file, `omarchy-cmd-screensaver`,
-that's installed to `~/.local/bin/` so it shadows the stock command via
-PATH precedence. Everything upstream of it stays as-is.
+The scripts install to `~/.local/bin`, which is placed **earlier on Hyprland's
+PATH** than `~/.local/share/omarchy/bin`. That lets them *shadow* the stock
+`omarchy-launch-screensaver` / `omarchy-screensaver` commands, so every entry
+point (hypridle, the Omarchy menu, branding previews) honors the selected mode.
+The real stock scripts are still invoked by full path when you pick `ascii` or
+`default` — nothing in `~/.local/share/omarchy` is modified.
 
 ## Install
 
-### Prerequisites
-
-`~/.local/bin` must be earlier in your shell PATH than
-`~/.local/share/omarchy/bin/`. On a default Omarchy install this is
-true for interactive shells but **not** for processes spawned by
-Hyprland — including the alacritty session the screensaver runs in.
-Add this line to `~/.config/hypr/envs.conf` so Hyprland-spawned
-children see `~/.local/bin` first:
-
-```conf
-env = PATH,$HOME/.local/bin:$PATH
-```
-
-Reload Hyprland: `hyprctl reload`.
-
-### Install the screensaver itself
-
 ```bash
-# Clone
 git clone https://github.com/burakTanBilgi/omarchy-dvd-screensaver.git
 cd omarchy-dvd-screensaver
-
-# Run the installer
 ./install.sh
+hyprctl reload && omarchy restart hypridle
 ```
 
-Or by hand:
+`install.sh` copies the scripts and the DVD page, ensures `~/.local/bin` is on
+Hyprland's PATH, points hypridle's timeout at the dispatcher, and sets a default
+mode (`browser` if Chromium is installed, else `ascii`). **Every config edit is
+backed up first and skipped if already present.**
+
+### Requirements
+
+- **browser mode:** `chromium`
+- **ascii mode:** `python3` (ships with Omarchy)
+- **mode menu:** `gum` (ships with Omarchy)
+
+## Use
 
 ```bash
-install -Dm755 bin/omarchy-cmd-screensaver ~/.local/bin/omarchy-cmd-screensaver
-install -Dm644 branding/screensaver.txt    ~/.config/omarchy/branding/screensaver.txt
+omarchy-launch-screensaver force     # preview the current mode now (move mouse to exit)
+omarchy-screensaver-menu             # pick a mode (DVD ASCII / DVD browser / default / none)
 ```
 
-### Try it
+Or set the mode directly:
 
 ```bash
-omarchy-launch-screensaver force
+echo browser > ~/.config/omarchy/screensaver-mode
 ```
-
-`force` skips the `screensaver-off` toggle check, useful for testing.
 
 ## Customize
 
-### Change the ASCII art
+### The fireworks (browser mode)
 
-Edit `~/.config/omarchy/branding/screensaver.txt`. The bouncer reads
-this file at startup; the largest line determines the bounding box.
-Try ASCII art generators or use figlet/toilet output.
+All knobs live near the top of the relevant functions in
+`~/.config/omarchy/screensaver/dvd.html`:
 
-### Speed / smoothness
+| What | Where | Default |
+| --- | --- | --- |
+| How close to a corner counts as a hit | `CORNER_TOL` | `8` px — raise it (e.g. `24`) to trigger fireworks more often |
+| Show length / rhythm | the `times` array in `fireShow` | launches over ~4 s |
+| Burst height band | `ty = rand(H()*0.12, H()*0.60)` in `launchVolley` | upper-middle |
+| Bounce color palette | the `colors` array | neon set |
 
-Top of the Python file:
+The logo is the real DVD-Video mark, embedded as a recolorable CSS mask
+(`dvd-mask.png`, inlined as a `data:` URI so it works under `file://`).
 
-```python
-FRAME_DELAY = 0.05   # 20fps loop — input/focus responsiveness
-MOVE_EVERY  = 10     # ...but only step the logo every N frames (~2 cells/s)
-```
+### The ASCII art
 
-Lower `MOVE_EVERY` for faster movement. Lower `FRAME_DELAY` for tighter
-input response (the loop is the same for both).
-
-### Color
-
-The logo uses your terminal's foreground color (no explicit ANSI color
-escape). To force a single color, replace the line that writes each
-art row with:
-
-```python
-chunks.append(f"\033[{y + i + 1};{x + 1}H\033[38;5;201m{line}\033[0m")
-```
-
-(201 = hot pink in xterm-256.)
+Edit `~/.config/omarchy/branding/screensaver.txt`. The largest line sets the
+bounding box. Speed lives at the top of `omarchy-cmd-screensaver`
+(`MOVE_EVERY` — lower is faster).
 
 ## Uninstall
 
 ```bash
-rm ~/.local/bin/omarchy-cmd-screensaver
-# (your stock omarchy-cmd-screensaver is restored automatically via PATH fallthrough)
+rm ~/.local/bin/{omarchy-screensaver-launch,omarchy-screensaver,omarchy-launch-screensaver,omarchy-cmd-screensaver,omarchy-screensaver-menu}
+rm ~/.config/omarchy/bin/omarchy-launch-dvd-screensaver
+echo default > ~/.config/omarchy/screensaver-mode
 ```
 
-The PATH line in `envs.conf` is harmless to leave in place but you can
-remove it too if you have no other `~/.local/bin` overrides.
-
-## How the bounce works
-
-Position math uses reflection-past-edge so the logo only touches each
-wall for one movement step. Hitting a corner just reflects on both
-axes in the same step.
+Removing the shadows restores the stock Omarchy screensaver via PATH
+fallthrough. The PATH line in `envs.conf` is harmless to leave.
 
 ## See also
 
+- [`omarchy-desktop-groups`](https://github.com/burakTanBilgi/omarchy-desktop-groups) — isolated desktop groups (bands of 10) on the number row
 - [`omarchy-bg-random`](https://github.com/burakTanBilgi/omarchy-bg-random) — random / cyclable wallpapers for the active theme
 - [`omarchy-waybar-tweaks`](https://github.com/burakTanBilgi/omarchy-waybar-tweaks) — clock seconds, workspace app icons, braille volume bar
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).

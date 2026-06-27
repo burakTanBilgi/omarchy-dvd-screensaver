@@ -1,0 +1,14 @@
+#!/bin/bash
+# Shadow of Omarchy's stock screensaver launcher.
+#
+# hypridle is wired to the mode-aware dispatcher (omarchy-screensaver-launch),
+# but other callers invoke this stock name DIRECTLY and would bypass the chosen
+# screensaver mode — landing on ASCII even when "browser" is selected. Known
+# direct callers in Omarchy source:
+#   - omarchy-menu                 ("Screensaver" entry -> omarchy-launch-screensaver force)
+#   - omarchy-branding-screensaver (previews after editing screensaver.txt)
+#
+# Routing everything through the dispatcher makes the selected mode authoritative
+# no matter who launches the screensaver. The dispatcher invokes the REAL stock
+# launcher by full path for ascii/default, so there is no recursion back here.
+exec "$HOME/.local/bin/omarchy-screensaver-launch" "$@"

@@ -1,0 +1,29 @@
+#!/bin/bash
+# Interactive screensaver picker. Run from a terminal or via walker.
+
+MODE_FILE="$HOME/.config/omarchy/screensaver-mode"
+CURRENT=$(cat "$MODE_FILE" 2>/dev/null || echo ascii)
+
+SELECTED=$(case "$CURRENT" in
+  default) echo "Omarchy default" ;;
+  browser) echo "DVD logo (browser)" ;;
+  none)    echo "None" ;;
+  *)       echo "DVD logo (ASCII)" ;;
+esac)
+
+CHOICE=$(gum choose \
+  --header "  Screensaver" \
+  --selected="$SELECTED" \
+  "DVD logo (ASCII)" \
+  "DVD logo (browser)" \
+  "Omarchy default" \
+  "None") || exit 0
+
+case "$CHOICE" in
+  "DVD logo (ASCII)")   echo ascii   > "$MODE_FILE" ;;
+  "DVD logo (browser)") echo browser > "$MODE_FILE" ;;
+  "Omarchy default")    echo default > "$MODE_FILE" ;;
+  "None")               echo none    > "$MODE_FILE" ;;
+esac
+
+notify-send -t 2000 "Screensaver" "Set to: $CHOICE"

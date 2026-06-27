@@ -1,0 +1,36 @@
+#!/bin/bash
+# Bouncing DVD-logo screensaver — opens an HTML page in chromium kiosk mode.
+# Exits on any keyboard/mouse input (handled by the page JS) or when killed.
+
+set -u
+
+CLASS="org.omarchy.dvd-screensaver"
+HTML="$HOME/.config/omarchy/screensaver/dvd.html"
+DATADIR="${XDG_RUNTIME_DIR:-/tmp}/omarchy-dvd-screensaver"
+
+# Honor the global screensaver-off toggle (same as omarchy-launch-screensaver)
+if [[ -f "$HOME/.local/state/omarchy/toggles/screensaver-off" ]] && [[ "${1:-}" != "force" ]]; then
+  exit 0
+fi
+
+# Already running?
+if pgrep -fx ".*chromium.*--class=${CLASS}.*" >/dev/null 2>&1; then
+  exit 0
+fi
+
+# Hide walker if visible
+command -v walker >/dev/null && walker -q 2>/dev/null
+
+mkdir -p "$DATADIR"
+
+exec chromium \
+  --app="file://$HTML" \
+  --class="$CLASS" \
+  --user-data-dir="$DATADIR" \
+  --no-first-run \
+  --no-default-browser-check \
+  --disable-translate \
+  --disable-features=Translate,TranslateUI \
+  --window-position=0,0 \
+  --start-fullscreen \
+  --kiosk

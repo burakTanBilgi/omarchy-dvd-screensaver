@@ -1,0 +1,20 @@
+#!/bin/bash
+# Shadow router for the Omarchy screensaver command.
+#
+# Omarchy's `omarchy-launch-screensaver` always spawns a terminal running
+# `omarchy-screensaver`. This file shadows that command (it sits earlier on the
+# Hyprland PATH than ~/.local/share/omarchy/bin) and routes to the right
+# renderer based on ~/.config/omarchy/screensaver-mode:
+#
+#   default      -> stock Omarchy tte screensaver (invoked by full path so we
+#                   don't recurse back into this shadow)
+#   ascii / else -> bouncing ASCII DVD-logo screensaver
+#
+# "browser" mode is handled upstream in omarchy-screensaver-launch and never
+# reaches this script.
+MODE=$(cat "$HOME/.config/omarchy/screensaver-mode" 2>/dev/null || echo ascii)
+
+case "$MODE" in
+  default) exec "$HOME/.local/share/omarchy/bin/omarchy-screensaver" "$@" ;;
+  *)       exec "$HOME/.local/bin/omarchy-cmd-screensaver" "$@" ;;
+esac

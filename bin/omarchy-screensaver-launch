@@ -1,0 +1,21 @@
+#!/bin/bash
+# Screensaver dispatcher — reads ~/.config/omarchy/screensaver-mode and calls
+# the right launcher. hypridle's on-timeout is wired to call this.
+#
+# Modes:
+#   ascii    bouncing ASCII DVD logo in a terminal              (default)
+#   default  stock Omarchy tte random-effects screensaver
+#   browser  bouncing DVD logo + corner-hit fireworks (Chromium kiosk)
+#   none     screensaver disabled
+#
+# ascii and default both go through omarchy-launch-screensaver; the
+# omarchy-screensaver shadow router then picks the actual renderer.
+MODE=$(cat "$HOME/.config/omarchy/screensaver-mode" 2>/dev/null || echo ascii)
+
+case "$MODE" in
+  browser) exec "$HOME/.config/omarchy/bin/omarchy-launch-dvd-screensaver" "$@" ;;
+  none)    exit 0 ;;
+  # Real stock launcher by FULL PATH — never the bare name, which now resolves
+  # to our shadow (~/.local/bin/omarchy-launch-screensaver) and would recurse.
+  *)       exec "$HOME/.local/share/omarchy/bin/omarchy-launch-screensaver" "$@" ;;
+esac
