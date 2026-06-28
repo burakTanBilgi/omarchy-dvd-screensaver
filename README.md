@@ -67,8 +67,12 @@ backed up first and skipped if already present.**
 
 ```bash
 omarchy-launch-screensaver force     # preview the current mode now (move mouse to exit)
+omarchy-dvd-demo                     # watch the fireworks + ground pile on a loop (Esc/q to quit)
 omarchy-screensaver-menu             # pick a mode (DVD ASCII / DVD browser / default / none)
 ```
+
+The fireworks only trigger on a real corner hit (rare by design), so `omarchy-dvd-demo`
+is the way to actually watch them — it loops the corner show from random corners.
 
 Or set the mode directly:
 

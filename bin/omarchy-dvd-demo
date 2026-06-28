@@ -1,0 +1,15 @@
+#!/bin/bash
+# Preview the DVD screensaver's fireworks + ground pile on a LOOP, fullscreen.
+# It fires a corner show every ~8.5s from a random corner so you can actually
+# watch the effects (which on the real screensaver only trigger on a rare
+# corner hit). Press Esc or q to quit. Does not change any screensaver settings.
+
+# Close any prior preview so we never show a stale page, then load fresh.
+pkill -f 'org\.omarchy\.dvd-screensaver-demo' 2>/dev/null
+HTML="$HOME/.config/omarchy/screensaver/dvd.html"
+exec chromium \
+  --app="file://$HTML?demo=1&t=$(date +%s%N)" \
+  --class=org.omarchy.dvd-screensaver-demo \
+  --user-data-dir="${XDG_RUNTIME_DIR:-/tmp}/omarchy-dvd-demo" \
+  --no-first-run \
+  --start-fullscreen

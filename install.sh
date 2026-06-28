@@ -23,7 +23,7 @@ say(){ printf '==> %s\n' "$*"; }
 # 1. scripts -> ~/.local/bin (these shadow the stock commands via PATH order)
 say "Installing scripts to $LBIN"
 for f in omarchy-screensaver-launch omarchy-screensaver omarchy-launch-screensaver \
-         omarchy-cmd-screensaver omarchy-screensaver-menu; do
+         omarchy-cmd-screensaver omarchy-screensaver-menu omarchy-dvd-demo; do
   install -Dm755 "$REPO/bin/$f" "$LBIN/$f"
 done
 
@@ -53,6 +53,17 @@ if [[ -f "$HYPRIDLE" ]] && ! grep -q 'omarchy-screensaver-launch' "$HYPRIDLE"; t
   fi
 fi
 
+# 5b. Give the screensaver room before locking. Omarchy's stock config locks ~2s
+# after the screensaver (timeout 152), assuming the screensaver resets the idle
+# timer via a cursor warp — but that warp is a no-op on a single monitor and the
+# browser screensaver doesn't warp at all, so the lock would cover the screensaver
+# almost immediately. Bump the lock to an absolute 5 min so it actually shows.
+if [[ -f "$HYPRIDLE" ]] && grep -qE 'timeout *= *152' "$HYPRIDLE"; then
+  say "Setting screensaver lock to 5 min (stock locks 2s after the screensaver)"
+  cp "$HYPRIDLE" "$HYPRIDLE.bak.$(date +%s)"
+  sed -i 's/timeout *= *152/timeout = 300/' "$HYPRIDLE"
+fi
+
 # 6. default mode: browser if chromium is available, else ascii
 if [[ ! -f "$MODEFILE" ]]; then
   mkdir -p "$(dirname "$MODEFILE")"
@@ -63,4 +74,5 @@ fi
 echo
 say "Done. Apply with:  hyprctl reload && omarchy restart hypridle"
 echo "    Preview now:   omarchy-launch-screensaver force"
+echo "    Watch effects: omarchy-dvd-demo                (loops the fireworks; Esc/q to quit)"
 echo "    Switch modes:  omarchy-screensaver-menu        (needs 'gum')"
